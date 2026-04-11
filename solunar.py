@@ -154,7 +154,6 @@ def calc_lunar_position(coords, date_time):
 
     # declination
     delta = math.asin(math.sin(beta) * math.cos(epsilon) + math.cos(beta) * math.sin(epsilon) * math.sin(lmda))
-    delta = wrap_to_0_2pi(delta)
 
     # Greenwich hour angle at vernal equinox plus local offset
     theta = get_sidereal_time(d, rlong)
@@ -198,7 +197,6 @@ def calc_solar_position(coords, date_time):
 
     # declination
     delta = math.asin(math.sin(i) * math.sin(A))
-    delta = wrap_to_0_2pi(delta)
 
     # Greenwich hour angle at vernal equinox plus local offset
     theta = get_sidereal_time(d, rlong)

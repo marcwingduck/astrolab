@@ -71,11 +71,12 @@ neopixel_write(pin, leds0)
 # ##############################################################################
 
 
-def fade(steps=32, sleep=0):
+def fade(steps=16, sleep=0):
     for i in range(steps):
         t = (i + 1.) / steps
-        for j in range(n * 4):  # iterate all
-            leds0[j] = int(interpolate(leds0[j], dimmer*leds1[j], t))
+        t1 = 1. - t
+        for j in range(n * 4):
+            leds0[j] = int(t1 * leds0[j] + t * dimmer * leds1[j])
         neopixel_write(pin, leds0)
         utime.sleep_ms(sleep)
 
@@ -96,9 +97,12 @@ def clear(leds):
 
 
 def init(leds, color):
-    # leds0[:] = bytearray(n * background)  <-- causes memory issues
     for i in range(n):
-        leds[i*4:i*4+4] = bytearray(color)
+        o = i * 4
+        leds[o] = color[0]
+        leds[o+1] = color[1]
+        leds[o+2] = color[2]
+        leds[o+3] = color[3]
 
 
 def off():
@@ -149,13 +153,17 @@ def set_sides(north, east, south, west, linear=False):
 
     if linear:
         for i in range(*cardinals['north'][2]):
-            leds1[i * 4:i * 4 + 4] = bytearray(north)
+            o = i * 4
+            leds1[o] = north[0]; leds1[o+1] = north[1]; leds1[o+2] = north[2]; leds1[o+3] = north[3]
         for i in range(*cardinals['east'][2]):
-            leds1[i * 4:i * 4 + 4] = bytearray(east)
+            o = i * 4
+            leds1[o] = east[0]; leds1[o+1] = east[1]; leds1[o+2] = east[2]; leds1[o+3] = east[3]
         for i in range(*cardinals['south'][2]):
-            leds1[i * 4:i * 4 + 4] = bytearray(south)
+            o = i * 4
+            leds1[o] = south[0]; leds1[o+1] = south[1]; leds1[o+2] = south[2]; leds1[o+3] = south[3]
         for i in range(*cardinals['west'][2]):
-            leds1[i * 4:i * 4 + 4] = bytearray(west)
+            o = i * 4
+            leds1[o] = west[0]; leds1[o+1] = west[1]; leds1[o+2] = west[2]; leds1[o+3] = west[3]
     else:
         set_area2(cardinals['north'][0] / leds_per_cm, width, north, leds1)
         set_area2(cardinals['east'][0] / leds_per_cm, height, east, leds1)
@@ -408,10 +416,12 @@ def spin(color, frequency):
     init(leds0, background)
 
     for i in range(tail):
-        index = (frac_led_index - i) % n
+        o = ((frac_led_index - i) % n) * 4
         t = 1. - float(i) / tail
-        fading = interpolate_rgbw(background, beam_color, t)
-        leds0[index * 4:index * 4 + 4] = bytearray(fading)
+        leds0[o] = int(interpolate(0, beam_color[0], t))
+        leds0[o+1] = int(interpolate(0, beam_color[1], t))
+        leds0[o+2] = int(interpolate(0, beam_color[2], t))
+        leds0[o+3] = int(interpolate(0, beam_color[3], t))
 
     neopixel_write(pin, leds0)
 

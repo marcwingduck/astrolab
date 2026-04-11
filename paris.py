@@ -394,10 +394,10 @@ def spin(color, frequency):
     last_millis = now_millis
 
     angle = wrap_to_0_2pi(last_angle + dt * frequency * 2. * math.pi)
+    last_angle = angle
     cm_on_strip, (x, y) = unwind_angle(northclockwise2math(angle))
     intensity = (min(height, width) / 2.) / math.sqrt(x*x+y*y)
     fraction_led = cm_on_strip * leds_per_cm
-    last_angle = angle
 
     frac, frac_led_index = math.modf(fraction_led)
     frac_led_index = int(frac_led_index)
@@ -513,7 +513,7 @@ def run_spin(color, frequency=0.25):
     global static
 
     static = False
-    timer.init(period=50, mode=Timer.PERIODIC, callback=lambda t: spin(color, frequency))
+    timer.init(period=100, mode=Timer.PERIODIC, callback=lambda t: spin(color, frequency))
 
 
 def run_larson_scanner(cardinal, primary, secondary):

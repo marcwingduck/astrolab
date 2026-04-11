@@ -49,6 +49,16 @@ Of course some cables are required. I soldered the microcontroller and the level
 
 Create a file named `connection` that contains one line `ssid:passwd`. This later enables the project to access the internet in order to retrieve date and time for the solar/lunar position calculations and the clock visualization.
 
+### WebREPL Deployment Target
+
+Create a file named `connection_esp` that contains one line `host:port,password`, e.g.:
+
+```
+192.168.0.188:8266,mypassword
+```
+
+This is read by `deploy.sh` to determine the board's IP, WebREPL port, and password. Both `connection` and `connection_esp` are gitignored.
+
 ### Frame Constants
 
 Variables in `frame.py` that need to be adjusted according to your frame.
@@ -83,7 +93,7 @@ coords = (48.860536, 2.332237)
 Download the latest stable [ESP8266 MicroPython firmware](http://micropython.org/download/esp8266/) and create a new Python environment if not done yet:
 
 ```
-conda create -n esp python=3.8.3
+conda create -n esp python=3.9
 conda activate esp
 pip install esptool
 ```
@@ -96,25 +106,40 @@ Connect an USB RS232 adapter to the HUZZAH ESP8266:
 ________________________________
 ```
 
+When MicroPython boots for the first time, the ESP8266 radio does a full RF calibration and saves the parameters to flash. This draws a significant spike of current (up to 400mA).
+If you are powering the HUZZAH solely from the USB-serial adapter (which usually only provides ~100-150mA on its 3.3V pin), the voltage drops, and the ESP8266 reboots with a wdt reset before it can finish.
+
+**SO DON'T USE USB FTDI POWER, JUST CONNECT GND/RX/TX, leave C+ disconnected and USE THE EXTERNAL POWER OF THE ESP8266**
+
 Clear and flash firmware (press/release RESET while holding GPIO0 button to put it into firmware flashing mode)
 
 ```
-python -m esptool --port /dev/tty.usbserial-XXXXXXXX erase_flash
-python -m esptool --port /dev/tty.usbserial-XXXXXXXX --baud 460800 write_flash --flash_size=detect 0 esp8266-20220618-v1.19.1.bin
+python3 -m esptool --port /dev/tty.usbserial-AH02PPM3 erase_flash
+```
+
+Press/release RESET while holding GPIO0 button
+
+```
+python3 -m esptool --port /dev/tty.usbserial-AH02PPM3 --baud 460800 write_flash --flash_size=detect 0 ESP8266_GENERIC-20260406-v1.28.0.bin
 ```
 
 Keep the USB connection for the next step.
 
 ## WebREPL Setup
 
-Open emulated terminal and initiate the setup process while still being connected to the USB RS232 adapter:
+Open a serial connection to the board using `screen`:
 
+```bash
+screen /dev/tty.usbserial-AH02PPM3 115200
 ```
-screen /dev/tty.usbserial-XXXXXXXX 115200
+
+Once at the REPL, initiate the setup process:
+
+```python
 import webrepl_setup
 ```
 
-Follow setup steps and restart.
+Follow the setup steps and configure it to start on boot. Restart the board when finished.
 
 ## Cross-compile Project Files
 
@@ -138,18 +163,42 @@ make -C mpy-cross
 
 ### Cross Compile Modules
 
-Compile all modules except for the main module:
+Add `mpy-cross` to your path and run:
 
+```bash
+mpy-cross module.py
 ```
-/path/to/mpy-cross/mpy-cross module.py
+
+for individual modules, or use the provided script to compile all modules except for the main module:
+
+```bash
+./compile.sh
 ```
+
+**Note:** Do not cross-compile `main.py`. MicroPython's boot sequence explicitly looks for a plain-text `main.py` file to execute after `boot.py`. If it's compiled as `main.mpy`, the firmware won't run it automatically on startup.
 
 ### Transfer Files
 
-Clone WebREPL to have an offline version or use the cached online version:
-* [Clone this Repository](https://github.com/micropython/webrepl)
-* [Cache this Website](http://micropython.org/webrepl/)
+Instead of using the manual WebREPL web interface, you can deploy everything wirelessly using [`webrepl_cli.py`](https://github.com/micropython/webrepl) from the MicroPython webrepl repository. Clone it somewhere on your machine:
 
-Connect to the MicroPython-XXXXXX WiFi network using the password set or default password `micropythoN`.
+```bash
+git clone https://github.com/micropython/webrepl /path/to/webrepl
+```
 
-Transfer `main.py` and compiled modules as well as the `connection` file to ESP8266 using WebREPL.
+Then update the `WEBREPL_CLI` path in `deploy.sh` to point to `webrepl_cli.py` in that checkout.
+
+Connect to the `MicroPython-XXXXXX` WiFi network (default password: `micropythoN`), or if connected to your home network, use the IP your router assigned to the board.
+
+To transfer a single file manually:
+
+```bash
+python webrepl_cli.py -p <password> local_file.py <host>:/remote_file.py
+```
+
+Or deploy all compiled `.mpy` files, the plain `main.py`, and your `connection` file using the provided deployment script:
+
+```bash
+./deploy.sh
+```
+
+The script reads the target host, port, and WebREPL password from `connection_esp` (see [Configuration](#configuration)), cross-compiles the latest code, transfers all files to the ESP8266, and soft-resets the board to run the new code.

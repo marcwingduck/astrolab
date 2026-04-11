@@ -9,8 +9,6 @@ import colors
 import solunar
 import clock as clk
 
-utc_offset = 2
-
 # solunar
 equinox_or_solstice = -1
 coords = (48.860536, 2.332237)  # paris
@@ -364,7 +362,7 @@ def solunar_demo():
 def update_clock():
     global start_second, last_second
     h, m, s = utime.localtime()[3:6]
-    h = (h + utc_offset) % 24
+    h = (h + timing.get_cet_offset()) % 24
     if last_second != s:  # no milliseconds in utime, count manually
         start_second = utime.ticks_ms()
     last_second = s

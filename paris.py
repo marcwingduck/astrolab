@@ -154,16 +154,28 @@ def set_sides(north, east, south, west, linear=False):
     if linear:
         for i in range(*cardinals['north'][2]):
             o = i * 4
-            leds1[o] = north[0]; leds1[o+1] = north[1]; leds1[o+2] = north[2]; leds1[o+3] = north[3]
+            leds1[o] = north[0]
+            leds1[o+1] = north[1]
+            leds1[o+2] = north[2]
+            leds1[o+3] = north[3]
         for i in range(*cardinals['east'][2]):
             o = i * 4
-            leds1[o] = east[0]; leds1[o+1] = east[1]; leds1[o+2] = east[2]; leds1[o+3] = east[3]
+            leds1[o] = east[0]
+            leds1[o+1] = east[1]
+            leds1[o+2] = east[2]
+            leds1[o+3] = east[3]
         for i in range(*cardinals['south'][2]):
             o = i * 4
-            leds1[o] = south[0]; leds1[o+1] = south[1]; leds1[o+2] = south[2]; leds1[o+3] = south[3]
+            leds1[o] = south[0]
+            leds1[o+1] = south[1]
+            leds1[o+2] = south[2]
+            leds1[o+3] = south[3]
         for i in range(*cardinals['west'][2]):
             o = i * 4
-            leds1[o] = west[0]; leds1[o+1] = west[1]; leds1[o+2] = west[2]; leds1[o+3] = west[3]
+            leds1[o] = west[0]
+            leds1[o+1] = west[1]
+            leds1[o+2] = west[2]
+            leds1[o+3] = west[3]
     else:
         set_area2(cardinals['north'][0] / leds_per_cm, width, north, leds1)
         set_area2(cardinals['east'][0] / leds_per_cm, height, east, leds1)
@@ -242,7 +254,7 @@ def ramp_up():
 # ##############################################################################
 
 
-def test_led(led_id, brightness=1, n_times=2, timeout_ms=300):
+def test_led(led_id, brightness=255, n_times=3, timeout_ms=500):
     for _ in range(n_times):
         for i in range(4):
             clear(leds0)
@@ -250,6 +262,9 @@ def test_led(led_id, brightness=1, n_times=2, timeout_ms=300):
             leds0[index] = brightness
             neopixel_write(pin, leds0)
             utime.sleep_ms(timeout_ms)
+        clear(leds0)
+        neopixel_write(pin, leds0)
+        utime.sleep_ms(timeout_ms)
     off()
 
 

@@ -17,8 +17,22 @@ coords = (48.860536, 2.332237)  # paris
 # some colors matching the frame
 color_off = bytearray(4)
 color_ambient = bytearray((1, 0, 1, 8))
-color_river = bytearray([int(0.06 * x) for x in colors.colors['river_blue']])
-color_accent = bytearray([int(0.4 * x) for x in colors.colors['crimson']])
+
+# the map's one accent color, drawn at two brightness levels:
+# bright for highlights (equinox, solstice markers, second hand), dim for the river
+accent_default = colors.colors['river_blue']
+color_accent = bytearray(4)
+color_river = bytearray(4)
+
+
+def set_accent(color):
+    """Set the accent from a full-brightness GRBW color, in place."""
+    for i in range(4):
+        color_accent[i] = int(0.4 * color[i])
+        color_river[i] = int(0.06 * color[i])
+
+
+set_accent(accent_default)
 
 # global dimmer
 dimmer = 0.5

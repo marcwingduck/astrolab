@@ -58,6 +58,19 @@ WIFI_PASSWORD=mypassword
 
 `WIFI_SSID` and `WIFI_PASSWORD` let the board join your WiFi to retrieve date and time for the solar/lunar position calculations and the clock visualization. `HOST` (port optional, default 8266) and `HOST_SECRET` are the board's WebREPL address and password, used by `deploy.sh`, which also copies `.env` to the board.
 
+### Accent Color Over UDP (optional)
+
+The river and the highlights (equinox and solstice markers, the second hand) share one accent color, river blue by default.
+With `ACCENT_PORT=4211` in `.env`, the map also takes that color from the network, e.g. the album color of the music playing:
+
+```
+echo -n "accent ff8800" | nc -u -w0 <map ip> 4211   # any RGB hex, drawn at the map's brightness
+echo -n "accent off" | nc -u -w0 <map ip> 4211      # back to the default
+```
+
+A sender should repeat its color every few seconds; after 30 s without one, the map returns to the default.
+See `accent.py`.
+
 ### Frame Constants
 
 Variables in `frame.py` that need to be adjusted according to your frame.

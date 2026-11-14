@@ -41,6 +41,15 @@ class Clock:
         self.color_m = list(c2)
         self.color_s = list(c3)
 
+    def replace_color(self, old, new):
+        """Swap one color for another wherever the clock uses it, keeping the neo clock's
+        current state (it trades its two colors every minute)."""
+        old, new = list(old), list(new)
+        for c in (self.color_1, self.color_2, self.color_old_hands, self.color_new_hands,
+                  self.color_h, self.color_m, self.color_s):
+            if c == old:
+                c[:] = new
+
     def update_params(self, params):
         for k, v in params.items():
             self.params[k] = v

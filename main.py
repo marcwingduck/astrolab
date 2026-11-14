@@ -52,10 +52,14 @@ def init(env):
 if __name__ == '__main__':
     machine.freq(160000000)
     paris.start()
-    is_online = init(read_env())
+    env = read_env()
+    is_online = init(env)
     ap_if = network.WLAN(network.AP_IF)
     if is_online:
         ap_if.active(False)
     else:
         ap_if.active(True)
     paris.run(is_online)
+    if is_online and env.get('ACCENT_PORT'):
+        import accent
+        accent.start(int(env['ACCENT_PORT']))

@@ -49,6 +49,10 @@ timer = Timer(-1)
 # keep track if dynamic, timer-based mode is running or a static
 static = True
 
+# the running mode that shows the accent, so a new accent can redraw it:
+# 'solunar', 'clock', 'ambient', or None for everything else
+mode = None
+
 # check if second changed to start counting millis
 start_second = 0
 last_second = -1
@@ -125,6 +129,8 @@ def off():
 
 
 def ambient():
+    global mode
+    mode = 'ambient'
     paris(leds1)
     fade()
 
@@ -498,7 +504,8 @@ def set_color(led_index, color, clear_others=False):
 
 
 def run_solunar():
-    global static, equinox_or_solstice
+    global static, equinox_or_solstice, mode
+    mode = 'solunar'
 
     # calculate once if today is equinox or solstice
     equinox_or_solstice = solunar.is_equinox_or_solstice(utime.localtime())
@@ -510,7 +517,8 @@ def run_solunar():
 
 
 def run_cls_clock(continuous=False):
-    global static
+    global static, mode
+    mode = 'clock'
 
     clock.update_params({'mode': 'cls', 'continuous': continuous})
     clock.set_background_colors(color_ambient, color_river)
@@ -523,7 +531,8 @@ def run_cls_clock(continuous=False):
 
 
 def run_neo_clock(start_at_minute=False, two_colors=False, ambient=False):
-    global static, last_minute
+    global static, last_minute, mode
+    mode = 'clock'
 
     clock.update_params({'mode': 'neo',
                          'start_at_minute': start_at_minute,
@@ -572,11 +581,27 @@ def run_larson_scanner(cardinal, primary, secondary):
 
 
 def stop_timer():
-    global static
+    global static, mode
+    mode = None
     if not static:
         leds0[:] = leds1  # copy currently displayed colors to start array for next fade
         static = True  # back to static mode
     timer.deinit()
+
+
+def change_accent(color):
+    """Switch to another accent (full-brightness GRBW) and redraw what shows it."""
+    old_accent, old_river = color_accent[:], color_river[:]
+    set_accent(color)
+    if color_accent == old_accent and color_river == old_river:
+        return
+    if mode == 'solunar':
+        paris_solunar()
+    elif mode == 'ambient':
+        ambient()
+    elif mode == 'clock':  # repaints within a second
+        clock.replace_color(old_river, color_river)
+        clock.replace_color(old_accent, color_accent)
 
 
 # ##############################################################################

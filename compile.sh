@@ -5,7 +5,7 @@
 # to your .zshrc/.bashrc:
 
 mkdir -p build
-for f in clock.py colors.py common.py frame.py paris.py solunar.py timing.py; do
+for f in accent.py clock.py colors.py common.py frame.py paris.py solunar.py timing.py; do
     g="${f%.*}"
     mpy-cross ${f} -o build/${g}.mpy
 done

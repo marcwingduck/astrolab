@@ -4,33 +4,45 @@
 # 1. Compile everything (outputs .mpy files to build/)
 ./compile.sh
 
-# 2. ESP8266 WebREPL IP and Password — loaded from connection_esp (format: host:port,password)
-CONNECTION=$(cat connection_esp)
-HOST=$(echo "$CONNECTION" | cut -d: -f1)
-PORT=$(echo "$CONNECTION" | cut -d: -f2 | cut -d, -f1)
-PASSWORD=$(echo "$CONNECTION" | cut -d, -f2)
+# 2. ESP8266 WebREPL address and password, from .env: HOST=host[:port], HOST_SECRET=password
+env_value() {
+    local v
+    v=$(sed -n "s/^$1=//p" .env | tail -1)
+    # strip one pair of surrounding quotes
+    if [[ ${#v} -ge 2 && ( "$v" == \"*\" || "$v" == \'*\' ) ]]; then
+        v=${v:1:${#v}-2}
+    fi
+    printf '%s' "$v"
+}
+HOST=$(env_value HOST)
+PASSWORD=$(env_value HOST_SECRET)
+PORT=8266
+if [[ "$HOST" == *:* ]]; then
+    PORT=${HOST##*:}
+    HOST=${HOST%%:*}
+fi
+TARGET="$HOST:$PORT"
 WEBREPL_CLI="/Users/marc/Development/external/webrepl/webrepl_cli.py"
 
-echo "Deploying to $HOST..."
+echo "Deploying to $TARGET..."
 
 # 3. Copy files.
 # Use uncompiled main.py (required for MicroPython boot)
-python "$WEBREPL_CLI" -p "$PASSWORD" main.py "$HOST":/main.py
+python "$WEBREPL_CLI" -p "$PASSWORD" main.py "$TARGET":/main.py
 
-# Ensure connection file is copied too (for WiFi credentials)
-if [ -f "connection" ]; then
-    python "$WEBREPL_CLI" -p "$PASSWORD" connection "$HOST":/connection
-fi
+# The board reads its WiFi credentials from .env
+python "$WEBREPL_CLI" -p "$PASSWORD" .env "$TARGET":/.env
 
 # Copy all compiled .mpy files from build/
 for f in build/*.mpy; do
     filename=$(basename "$f")
-    python "$WEBREPL_CLI" -p "$PASSWORD" "$f" "$HOST":"/$filename"
+    python "$WEBREPL_CLI" -p "$PASSWORD" "$f" "$TARGET":"/$filename"
 done
 
 # 4. Soft reset the board via WebREPL
-python - <<EOF
-import socket, struct, time
+# (values passed through the environment, so quotes or $ in the password can't break the script)
+HOST="$HOST" PORT="$PORT" PASSWORD="$PASSWORD" python - <<'EOF'
+import os, socket, struct, time
 
 def client_handshake(sock):
     cl = sock.makefile("rwb", 0)
@@ -50,7 +62,7 @@ def ws_read(s, size):
     return res
 
 s = socket.socket()
-s.connect(socket.getaddrinfo("$HOST", $PORT)[0][4])
+s.connect(socket.getaddrinfo(os.environ["HOST"], int(os.environ["PORT"]))[0][4])
 client_handshake(s)
 
 # Login
@@ -59,7 +71,7 @@ while True:
     if c == b":":
         ws_read(s, 1)
         break
-ws_write(s, b"$PASSWORD\r")
+ws_write(s, os.environ["PASSWORD"].encode() + b"\r")
 time.sleep(0.5)
 
 # Send reset command

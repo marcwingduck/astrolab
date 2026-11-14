@@ -45,19 +45,18 @@ Of course some cables are required. I soldered the microcontroller and the level
 
 ## Configuration
 
-### WiFi Connection
+### `.env`
 
-Create a file named `connection` that contains one line `ssid:passwd`. This later enables the project to access the internet in order to retrieve date and time for the solar/lunar position calculations and the clock visualization.
-
-### WebREPL Deployment Target
-
-Create a file named `connection_esp` that contains one line `host:port,password`, e.g.:
+Copy `.env.example` to `.env` (gitignored) and fill in:
 
 ```
-192.168.0.188:8266,mypassword
+HOST=192.168.0.188:8266
+HOST_SECRET=mypassword
+WIFI_SSID=myssid
+WIFI_PASSWORD=mypassword
 ```
 
-This is read by `deploy.sh` to determine the board's IP, WebREPL port, and password. Both `connection` and `connection_esp` are gitignored.
+`WIFI_SSID` and `WIFI_PASSWORD` let the board join your WiFi to retrieve date and time for the solar/lunar position calculations and the clock visualization. `HOST` (port optional, default 8266) and `HOST_SECRET` are the board's WebREPL address and password, used by `deploy.sh`, which also copies `.env` to the board.
 
 ### Frame Constants
 
@@ -195,10 +194,10 @@ To transfer a single file manually:
 python webrepl_cli.py -p <password> local_file.py <host>:/remote_file.py
 ```
 
-Or deploy all compiled `.mpy` files, the plain `main.py`, and your `connection` file using the provided deployment script:
+Or deploy all compiled `.mpy` files, the plain `main.py`, and your `.env` using the provided deployment script:
 
 ```bash
 ./deploy.sh
 ```
 
-The script reads the target host, port, and WebREPL password from `connection_esp` (see [Configuration](#configuration)), cross-compiles the latest code, transfers all files to the ESP8266, and soft-resets the board to run the new code.
+The script reads the target host, port, and WebREPL password from `.env` (see [Configuration](#configuration)), cross-compiles the latest code, transfers all files to the ESP8266, and soft-resets the board to run the new code.

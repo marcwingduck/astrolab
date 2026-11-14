@@ -2,14 +2,15 @@ import ntptime
 import utime
 
 
-def update_time():
-    while True:
+def update_time(attempts=5):
+    """Set the clock from ntp. Returns False if no server answered."""
+    for _ in range(attempts):
         try:
             ntptime.settime()
-            break
+            return True
         except OSError:
-            utime.sleep_ms(10)
-    # print('time:', utime.localtime())
+            utime.sleep_ms(500)
+    return False
 
 
 def get_cet_offset():

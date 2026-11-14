@@ -568,9 +568,13 @@ def stop_timer():
 # ##############################################################################
 
 
-def run(is_online):
+def start():
+    """Boot animation, shown while wifi and ntp are still connecting."""
     paris(leds1)
     ramp_up()
+
+
+def run(is_online):
     if is_online:
         run_solunar()
     else:

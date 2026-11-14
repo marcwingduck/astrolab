@@ -31,14 +31,12 @@ def connect():
 
 
 def init():
-    machine.freq(160000000)
-    if connect():
-        timing.update_time()
-        return True
-    return False
+    return connect() and timing.update_time()
 
 
 if __name__ == '__main__':
+    machine.freq(160000000)
+    paris.start()
     is_online = init()
     ap_if = network.WLAN(network.AP_IF)
     if is_online:

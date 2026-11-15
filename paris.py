@@ -17,19 +17,31 @@ coords = (48.860536, 2.332237)  # paris
 # some colors matching the frame
 color_off = bytearray(4)
 color_ambient = bytearray((1, 0, 1, 8))
+color_river = bytearray([int(0.06 * x) for x in colors.colors['river_blue']])
 
-# the map's one accent color, drawn at two brightness levels:
-# bright for highlights (equinox, solstice markers, second hand), dim for the river
+# The accent color, river blue unless one is received (see accent.py).
+# Each mode shows it in a role it already has:
+#   highlights (equinox, solstice markers, the classic clock's second hand), bright
+#   the neo clock's sweep, as dim as the river
+#   the solar map's glow over the edge facing the pole (north, or south on the southern
+#   hemisphere), where the sun goes least, like the start animation's; only while an accent is received
+#   (GLOW = 0 turns it off)
 accent_default = colors.colors['river_blue']
 color_accent = bytearray(4)
-color_river = bytearray(4)
+color_sweep = bytearray(4)
+color_glow = bytearray(4)
+accent_received = False
+GLOW = 1.  # brightness of the glow's middle, of the full accent
 
 
-def set_accent(color):
+def set_accent(color, received=False):
     """Set the accent from a full-brightness GRBW color, in place."""
+    global accent_received
+    accent_received = received
     for i in range(4):
         color_accent[i] = int(0.4 * color[i])
-        color_river[i] = int(0.06 * color[i])
+        color_sweep[i] = int(0.06 * color[i])
+        color_glow[i] = int(GLOW * color[i])
 
 
 set_accent(accent_default)
@@ -129,17 +141,23 @@ def off():
 
 
 def ambient():
-    global mode
-    mode = 'ambient'
     paris(leds1)
     fade()
 
 
-def paris(leds):
+def paris(leds, glow=False):
     init(leds, color_ambient)
+    if glow:
+        draw_glow(color_glow, leds)
     set_area2(1/leds_per_cm, 6, color_river, leds)
     set_area2(65/leds_per_cm, 10, color_river, leds)
     set_area2(143/leds_per_cm, 5, color_river, leds)
+
+
+def draw_glow(color, leds):
+    """Blend color in over the edge facing the pole."""
+    side = 'north' if coords[0] >= 0 else 'south'
+    set_area2(cardinals[side][0]/leds_per_cm, width/3, color, leds)
 
 
 def set_circular_background(color):
@@ -366,7 +384,7 @@ def draw_solunar_positions(lat_long_deg, utc_time, leds):
 
 
 def paris_solunar():
-    paris(leds1)
+    paris(leds1, accent_received and GLOW > 0)
     for i in range(equinox_or_solstice + 1):
         cardinal = list(cardinals.values())[i]
         set_area2(cardinal[0]/leds_per_cm, 5, color_accent, leds1)
@@ -540,7 +558,7 @@ def run_neo_clock(start_at_minute=False, two_colors=False, ambient=False):
                          'ambient': ambient})
 
     if ambient:
-        clock.set_background_colors(color_ambient, color_river)
+        clock.set_background_colors(color_ambient, color_sweep)
         clock.set_hand_colors([26, 26, 0, 127], [60, 0, 40, 0], color_accent)
     else:
         clock.set_background_colors(colors.colors['cyan'], colors.colors['orange'])
@@ -589,18 +607,16 @@ def stop_timer():
     timer.deinit()
 
 
-def change_accent(color):
+def change_accent(color, received=False):
     """Switch to another accent (full-brightness GRBW) and redraw what shows it."""
-    old_accent, old_river = color_accent[:], color_river[:]
-    set_accent(color)
-    if color_accent == old_accent and color_river == old_river:
+    old_accent, old_sweep, old_received = color_accent[:], color_sweep[:], accent_received
+    set_accent(color, received)
+    if color_accent == old_accent and color_sweep == old_sweep and accent_received == old_received:
         return
     if mode == 'solunar':
         paris_solunar()
-    elif mode == 'ambient':
-        ambient()
     elif mode == 'clock':  # repaints within a second
-        clock.replace_color(old_river, color_river)
+        clock.replace_color(old_sweep, color_sweep)
         clock.replace_color(old_accent, color_accent)
 
 

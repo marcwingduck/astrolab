@@ -60,8 +60,12 @@ WIFI_PASSWORD=mypassword
 
 ### Accent Color Over UDP (optional)
 
-The river and the highlights (equinox and solstice markers, the second hand) share one accent color, river blue by default.
-With `ACCENT_PORT=4211` in `.env`, the map also takes that color from the network, e.g. the album color of the music playing:
+The map has one accent color, river blue by default. Each mode shows it in a role it already has:
+the highlights (equinox and solstice markers, the classic clock's second hand) and the neo clock's sweep.
+With `ACCENT_PORT=4211` in `.env`, the map also takes that color from another device on the network.
+While a received color is active, the solar map also glows in it over the edge facing the pole (north, or south
+on the southern hemisphere, where the sun goes least), brightest in the middle like the last stage of the start
+animation (`GLOW` in `paris.py`):
 
 ```
 echo -n "accent ff8800" | nc -u -w0 <map ip> 4211   # any RGB hex, drawn at the map's brightness

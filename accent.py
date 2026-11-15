@@ -1,9 +1,10 @@
 """
 Accent color over UDP (optional, enabled by ACCENT_PORT in .env).
 
-Lets another device color the map, e.g. with the album color of the music playing:
-the river and the highlights take the received color, and the default comes back
-when the sender says so or goes quiet.
+Lets another device on the network set the map's accent color:
+each mode shows the received color in a role it already has (see paris.py: the
+highlights, the neo clock's sweep, a glow on the solar map's pole-facing edge); the default
+comes back when the sender says so or goes quiet.
 
 Datagrams are plain text:
     accent rrggbb   use this color (RGB hex); any brightness, it is drawn at the map's levels
@@ -46,7 +47,7 @@ def parse(msg):
     top = max(color)
     if not top:
         return None  # black is no accent
-    return [c * 255 // top for c in color]
+    return [colors.gamma[c * 255 // top] for c in color]
 
 
 def restore():
@@ -64,7 +65,7 @@ def handle(msg):
     elif color:
         active = True
         last_ms = utime.ticks_ms()
-        paris.change_accent(color)  # returns right away if the color didn't change
+        paris.change_accent(color, received=True)  # returns right away if the color didn't change
 
 
 def poll(_):

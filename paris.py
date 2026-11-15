@@ -100,22 +100,67 @@ neopixel_write(pin, leds0)
 # ##############################################################################
 
 
-def fade(steps=16, sleep=0):
-    for i in range(steps):
-        t = (i + 1.) / steps
-        t1 = 1. - t
-        for j in range(n * 4):
-            leds0[j] = int(t1 * leds0[j] + t * dimmer * leds1[j])
-        neopixel_write(pin, leds0)
-        utime.sleep_ms(sleep)
+FADE_MS = 1000
+
+# fade's working space, allocated once here: later the heap is too fragmented for it
+fade_index = bytearray(n)      # leds that change
+fade_start = bytearray(n * 4)  # their colors before
+fade_end = bytearray(n * 4)    # their colors after
+
+
+def fade(duration_ms=FADE_MS):
+    """Fade the displayed colors (leds0) to leds1 at the dimmer's brightness, over duration_ms,
+    in as many steps as the board manages. Only the leds that change are touched, in integer
+    math: a minute's redraw of the map moves just the sun, moon and glow. Allocates nothing."""
+    l0, l1 = leds0, leds1
+    index, start, end = fade_index, fade_start, fade_end
+    dim = int(dimmer * 256)
+    m = 0
+    for i in range(n):
+        o, p = i * 4, m * 4
+        e0, e1, e2, e3 = (l1[o] * dim) >> 8, (l1[o + 1] * dim) >> 8, (l1[o + 2] * dim) >> 8, (l1[o + 3] * dim) >> 8
+        if l0[o] != e0 or l0[o + 1] != e1 or l0[o + 2] != e2 or l0[o + 3] != e3:
+            index[m] = i
+            start[p], start[p + 1], start[p + 2], start[p + 3] = l0[o], l0[o + 1], l0[o + 2], l0[o + 3]
+            end[p], end[p + 1], end[p + 2], end[p + 3] = e0, e1, e2, e3
+            m += 1
+    fade_run(m, duration_ms)
+
+
+def fade_run(m, duration_ms):
+    """Step the first m leds of fade_index from fade_start to fade_end over duration_ms."""
+    if not m:
+        return
+    l0, index, start, end = leds0, fade_index, fade_start, fade_end
+    t0 = utime.ticks_ms()
+    w = 0
+    while w < 256:
+        t = utime.ticks_diff(utime.ticks_ms(), t0)
+        if t >= duration_ms:
+            w = 256
+        else:
+            w = t * 256 // duration_ms
+            w = w * w * (768 - 2 * w) >> 16  # ease in and out (smoothstep, in 1/256)
+        for k in range(m):
+            o, p = index[k] * 4, k * 4
+            s = start[p]
+            l0[o] = s + ((end[p] - s) * w >> 8)
+            s = start[p + 1]
+            l0[o + 1] = s + ((end[p + 1] - s) * w >> 8)
+            s = start[p + 2]
+            l0[o + 2] = s + ((end[p + 2] - s) * w >> 8)
+            s = start[p + 3]
+            l0[o + 3] = s + ((end[p + 3] - s) * w >> 8)
+        neopixel_write(pin, l0)
 
 
 def apply_dimmer(value):
     global dimmer
     dimmer = clamp(value, 0., 1.)
 
-    # apply in static mode only
-    if static:
+    # leds1 holds what static modes and the solar map show: fade it to the new brightness now
+    # (the clocks, spin and larson draw on their own and don't use the dimmer)
+    if static or mode == 'solunar':
         fade()
 
 
@@ -266,6 +311,10 @@ def set_vertical_interp(c1, c2):
 # ##############################################################################
 
 
+RAMP_TOP_MS = 800
+RAMP_TOP_WIDEN = 6.5  # 1: set_area2's plain bell; higher: a wider plateau
+
+
 def ramp_up():
     """
     Start animation.
@@ -293,11 +342,21 @@ def ramp_up():
         neopixel_write(pin, leds0)
         utime.sleep_ms(12)
 
-    for i in range(16):
-        color = interpolate_rgbw(ramp_color_1, ramp_color_3, (i + 1.) / 16.)
-        set_area2(cardinals['north'][0]/leds_per_cm, width, color, leds0)
-        neopixel_write(pin, leds0)
-        utime.sleep_ms(2)
+    # The top lights up, faded in by time: white over the top edge, a plateau with soft ends,
+    # set_area2's bell widened by the exponent
+    center, size = cardinals['north'][0]/leds_per_cm, width
+    m = 0
+    for i in range(int((center - size/2.) * leds_per_cm) + 1, int((center + size/2.) * leds_per_cm) + 1):
+        led = i % n
+        k = 1. - max(0., 1. - sine(center, size, i/leds_per_cm)) ** RAMP_TOP_WIDEN
+        o, p = led * 4, m * 4
+        fade_index[m] = led
+        for c in range(4):
+            v = leds0[o + c]
+            fade_start[p + c] = v
+            fade_end[p + c] = int(v + (ramp_color_3[c] - v) * k)
+        m += 1
+    fade_run(m, RAMP_TOP_MS)
 
     fade()
 

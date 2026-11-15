@@ -1,8 +1,8 @@
 # Astrolab
 
-I have upgraded an almost 50 year old map of Paris to display solar/lunar positions.
+I have upgraded a map of Paris from around 1950 to display solar/lunar positions.
 
-[![Astrolab](https://www.marclieser.de/data/content/interests/astrolab/astrolab_ytcue.jpg)](http://www.youtube.com/watch?v=3vjASYzq22o "Astrolab")
+[![Astrolab](https://www.marclieser.de/assets/interests/astrolab/astrolab_ytcue.jpg)](http://www.youtube.com/watch?v=3vjASYzq22o "Astrolab")
 
 Since I could not find a (free) web service to query solar and lunar azimuth and elevation, I used equations from [Meeus, Jean. Astronomical Algorithms, 1998](https://shopatsky.com/products/astronomical-algorithms-2nd-edition) and [Astronomy Answers](https://www.aa.quae.nl/en/reken.html) to do the calculations myself.
 The accuracy is very poor and there are probably bugs.

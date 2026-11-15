@@ -20,6 +20,11 @@ class Clock:
         self.color_old_hands = self.color_2[:]
         self.color_new_hands = self.color_1[:]
 
+        # the colors above at the dimmer's brightness, worked out each frame (see dim)
+        self.dim_1, self.dim_2 = bytearray(4), bytearray(4)
+        self.dim_old_hands, self.dim_new_hands = bytearray(4), bytearray(4)
+        self.dim_h, self.dim_m, self.dim_s = bytearray(4), bytearray(4), bytearray(4)
+
         self.params = {
             'mode': 'cls',
             # for cls clock
@@ -50,11 +55,20 @@ class Clock:
             if c == old:
                 c[:] = new
 
+    def dim(self, dim):
+        """Work out the colors to draw with at dim/256 brightness, as fade() dims the map, so a
+        clock and the map look alike. Once per frame: a handful of colors, not every led."""
+        for src, dst in ((self.color_1, self.dim_1), (self.color_2, self.dim_2),
+                         (self.color_old_hands, self.dim_old_hands), (self.color_new_hands, self.dim_new_hands),
+                         (self.color_h, self.dim_h), (self.color_m, self.dim_m), (self.color_s, self.dim_s)):
+            for k in range(4):
+                dst[k] = (src[k] * dim) >> 8
+
     def update_params(self, params):
         for k, v in params.items():
             self.params[k] = v
 
-    def update(self, h, m, s, ms, leds):
+    def update(self, h, m, s, ms, leds, dim=256):
         '''
         Parameters:
         ----------------
@@ -66,6 +80,8 @@ class Clock:
             seconds
         ms : int
             millis
+        dim : int
+            brightness, 256 is full (the dimmer, as fade() applies it)
 
         Returns:
         -----------------
@@ -83,10 +99,10 @@ class Clock:
         repaint = False
 
         if self.params['mode'] == 'neo':
-            self.neo(frac_h, frac_m, frac_s, leds, minute_changed)
+            self.neo(frac_h, frac_m, frac_s, leds, minute_changed, dim)
             repaint = True
         elif self.params['continuous'] or second_changed:
-            self.cls(frac_h, frac_m, frac_s, leds)
+            self.cls(frac_h, frac_m, frac_s, leds, dim)
             repaint = True
 
         self.last_minute = m
@@ -94,10 +110,11 @@ class Clock:
 
         return repaint
 
-    def cls(self, h, m, s, leds):
+    def cls(self, h, m, s, leds, dim=256):
         """
         Classic Clock
         """
+        self.dim(dim)
 
         a_h = h / 12. * 2. * math.pi
         a_m = m / 60. * 2. * math.pi
@@ -108,12 +125,13 @@ class Clock:
         s_dist = unwind_angle(northclockwise2math(a_s))[0]
 
         # leds[:] = bytearray(n * list(colors.color_ambient)) # <-- extra right-hand side allocation fails due to memory issues
+        background = self.dim_1
         for i in range(n):
-            leds[i*4:i*4+4] = bytearray(self.color_1)
+            leds[i*4:i*4+4] = background
 
-        set_area2(m_dist, 6, bytearray(self.color_m), leds)
-        set_area2(h_dist, 8, bytearray(self.color_h), leds)
-        set_area2(s_dist, 1, bytearray(self.color_s), leds)
+        set_area2(m_dist, 6, self.dim_m, leds)
+        set_area2(h_dist, 8, self.dim_h, leds)
+        set_area2(s_dist, 1, self.dim_s, leds)
 
         # smooth two-led second hand
         # fraction_led = s_dist * leds_per_cm
@@ -124,7 +142,7 @@ class Clock:
         # leds[id0:id0+4] = bytearray(interpolate_rgbw(self.color_s, leds[id0:id0+4], frac))
         # leds[id1:id1+4] = bytearray(interpolate_rgbw(leds[id1:id1+4], self.color_s, frac))
 
-    def neo(self, h, m, s, leds, change_color):
+    def neo(self, h, m, s, leds, change_color, dim=256):
         """
         Neo(n) Clock
         """
@@ -138,6 +156,7 @@ class Clock:
                 self.color_2[:] = tmp
             else:  # random neo mode
                 self.color_2[:] = list(colors.random_saturated_2(self.color_1))
+        self.dim(dim)  # after the swap, so the dimmed colors follow it
 
         if self.params['start_at_minute']:  # start seconds at minute hand
             m_h = int(m) / 60. * 2. * math.pi
@@ -165,11 +184,11 @@ class Clock:
             a_i = i % n
             is_hand = a_i in h_hand_range or a_i in m_hand_range and not self.params['start_at_minute']
             if i < start + n_leds:  # seconds passed
-                icolor = self.color_2 if not is_hand else self.color_new_hands
+                icolor = self.dim_2 if not is_hand else self.dim_new_hands
             elif i > start + n_leds:  # seconds to be passed
-                icolor = self.color_1 if not is_hand else self.color_old_hands
+                icolor = self.dim_1 if not is_hand else self.dim_old_hands
             elif is_hand:  # frac_led_index and hand (partially lit)
-                icolor = interpolate_rgbw(self.color_old_hands, self.color_new_hands, frac)
+                icolor = bytearray(interpolate_rgbw(self.dim_old_hands, self.dim_new_hands, frac))
             else:  # frac_led_index and not a hand (partially lit)
-                icolor = interpolate_rgbw(self.color_1, self.color_2, frac)
-            leds[a_i * 4:a_i * 4 + 4] = bytearray(icolor)
+                icolor = bytearray(interpolate_rgbw(self.dim_1, self.dim_2, frac))
+            leds[a_i * 4:a_i * 4 + 4] = icolor

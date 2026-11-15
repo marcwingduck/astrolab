@@ -67,11 +67,13 @@ mode = None
 # check if second changed to start counting millis
 start_second = 0
 last_second = -1
-last_minute = -1
 
 # spin globals
 last_angle = 0
 last_millis = 0
+spin_head = -1  # the beam's head led last frame, -1: draw the whole strip
+SPIN_TAIL = 24  # leds
+SPIN_FRAME_MS = 40
 
 # larson scanner globals
 larson_bounds = (0, n)
@@ -87,9 +89,14 @@ clock.set_hand_colors([26, 26, 0, 127], [60, 0, 40, 0], color_accent)
 # ##############################################################################
 
 
+# False while a timer mode's first frame is drawn unseen (see fade_in)
+showing = True
+
+
 def neopixel_write(pin, buffer):
     # low-level driving of a NeoPixel changed from esp.neopixel_write to machine.bitstream
-    bitstream(pin, 0, (400, 850, 800, 450), buffer)
+    if showing:
+        bitstream(pin, 0, (400, 850, 800, 450), buffer)
 
 
 # init neopixels
@@ -106,32 +113,53 @@ FADE_MS = 1000
 fade_index = bytearray(n)      # leds that change
 fade_start = bytearray(n * 4)  # their colors before
 fade_end = bytearray(n * 4)    # their colors after
+# Each led rounds at its own threshold, spread evenly (golden ratio): fading between two close
+# levels, some leds take the step before their neighbors, so a dim area fades evenly instead of
+# all its leds jumping together. Start and end stay exact; each led still steps only once per level.
+fade_dither = bytearray((i * 159) & 255 for i in range(n))
 
 
 def fade(duration_ms=FADE_MS):
     """Fade the displayed colors (leds0) to leds1 at the dimmer's brightness, over duration_ms,
     in as many steps as the board manages. Only the leds that change are touched, in integer
     math: a minute's redraw of the map moves just the sun, moon and glow. Allocates nothing."""
-    l0, l1 = leds0, leds1
+    fade_run(fade_plan(leds0, leds1, int(dimmer * 256)), duration_ms)
+
+
+def fade_in(draw, duration_ms=FADE_MS):
+    """Start a timer mode softly: draw its first frame into leds0 unseen, then fade to it from
+    what was shown. leds1 holds that meanwhile: the timer modes don't use it."""
+    global showing
+    leds1[:] = leds0
+    showing = False
+    try:
+        draw()
+    finally:
+        showing = True
+    fade_run(fade_plan(leds1, leds0, 256), duration_ms)
+
+
+def fade_plan(shown, target, dim):
+    """Fill fade_index, fade_start and fade_end with the leds where shown differs from target at
+    dim/256 brightness; returns how many."""
     index, start, end = fade_index, fade_start, fade_end
-    dim = int(dimmer * 256)
     m = 0
     for i in range(n):
         o, p = i * 4, m * 4
-        e0, e1, e2, e3 = (l1[o] * dim) >> 8, (l1[o + 1] * dim) >> 8, (l1[o + 2] * dim) >> 8, (l1[o + 3] * dim) >> 8
-        if l0[o] != e0 or l0[o + 1] != e1 or l0[o + 2] != e2 or l0[o + 3] != e3:
+        e0, e1, e2, e3 = (target[o] * dim) >> 8, (target[o + 1] * dim) >> 8, (target[o + 2] * dim) >> 8, (target[o + 3] * dim) >> 8
+        if shown[o] != e0 or shown[o + 1] != e1 or shown[o + 2] != e2 or shown[o + 3] != e3:
             index[m] = i
-            start[p], start[p + 1], start[p + 2], start[p + 3] = l0[o], l0[o + 1], l0[o + 2], l0[o + 3]
+            start[p], start[p + 1], start[p + 2], start[p + 3] = shown[o], shown[o + 1], shown[o + 2], shown[o + 3]
             end[p], end[p + 1], end[p + 2], end[p + 3] = e0, e1, e2, e3
             m += 1
-    fade_run(m, duration_ms)
+    return m
 
 
 def fade_run(m, duration_ms):
     """Step the first m leds of fade_index from fade_start to fade_end over duration_ms."""
     if not m:
         return
-    l0, index, start, end = leds0, fade_index, fade_start, fade_end
+    l0, index, start, end, dither = leds0, fade_index, fade_start, fade_end, fade_dither
     t0 = utime.ticks_ms()
     w = 0
     while w < 256:
@@ -142,15 +170,16 @@ def fade_run(m, duration_ms):
             w = t * 256 // duration_ms
             w = w * w * (768 - 2 * w) >> 16  # ease in and out (smoothstep, in 1/256)
         for k in range(m):
-            o, p = index[k] * 4, k * 4
+            i = index[k]
+            o, p, d = i * 4, k * 4, dither[i]
             s = start[p]
-            l0[o] = s + ((end[p] - s) * w >> 8)
+            l0[o] = s + (((end[p] - s) * w + d) >> 8)
             s = start[p + 1]
-            l0[o + 1] = s + ((end[p + 1] - s) * w >> 8)
+            l0[o + 1] = s + (((end[p + 1] - s) * w + d) >> 8)
             s = start[p + 2]
-            l0[o + 2] = s + ((end[p + 2] - s) * w >> 8)
+            l0[o + 2] = s + (((end[p + 2] - s) * w + d) >> 8)
             s = start[p + 3]
-            l0[o + 3] = s + ((end[p + 3] - s) * w >> 8)
+            l0[o + 3] = s + (((end[p + 3] - s) * w + d) >> 8)
         neopixel_write(pin, l0)
 
 
@@ -159,7 +188,7 @@ def apply_dimmer(value):
     dimmer = clamp(value, 0., 1.)
 
     # leds1 holds what static modes and the solar map show: fade it to the new brightness now
-    # (the clocks, spin and larson draw on their own and don't use the dimmer)
+    # (the clocks pick it up with their next frame; spin and larson don't use it)
     if static or mode == 'solunar':
         fade()
 
@@ -508,7 +537,7 @@ def update_clock():
     last_second = s
     ms = int(clamp(utime.ticks_ms() - start_second, 0, 1000))
 
-    if clock.update(h, m, s, ms, leds0):
+    if clock.update(h, m, s, ms, leds0, int(dimmer * 256)):
         neopixel_write(pin, leds0)
 
 
@@ -525,37 +554,41 @@ def clock_demo():
 
 
 def spin(color, frequency):
-    global last_millis, last_angle
-
-    tail = 24
+    """A beam turning around the frame like a lighthouse's. Drawn between leds: the led ahead
+    of the head lights up by how far the head has reached it, so it glides instead of jumping."""
+    global last_millis, last_angle, spin_head
 
     now_millis = utime.ticks_ms()
-    dt = (now_millis - last_millis) / 1000.
+    dt = utime.ticks_diff(now_millis, last_millis) / 1000.
     last_millis = now_millis
 
     angle = wrap_to_0_2pi(last_angle + dt * frequency * 2. * math.pi)
     last_angle = angle
     cm_on_strip, (x, y) = unwind_angle(northclockwise2math(angle))
-    intensity = (min(height, width) / 2.) / math.sqrt(x*x+y*y)
-    fraction_led = cm_on_strip * leds_per_cm
+    intensity = (min(height, width) / 2.) / math.sqrt(x*x+y*y)  # dimmer where the edge is far
+    head = cm_on_strip * leds_per_cm  # where the beam's head is, in leds, between two of them
+    h = int(head)
+    frac = head - h
 
-    frac, frac_led_index = math.modf(fraction_led)
-    frac_led_index = int(frac_led_index)
+    l0, tail = leds0, SPIN_TAIL
+    if spin_head < 0:
+        clear(l0)
+    else:  # only last frame's beam needs clearing
+        for i in range(spin_head - tail, spin_head + 2):
+            o = (i % n) * 4
+            l0[o] = l0[o+1] = l0[o+2] = l0[o+3] = 0
+    spin_head = h
 
-    background = [0, 0, 0, 0]
-    beam_color = [int(intensity * c) for c in color]
+    c0, c1, c2, c3 = intensity * color[0], intensity * color[1], intensity * color[2], intensity * color[3]
+    for i in range(-1, tail + 1):  # the led ahead of the head, the head, the tail
+        d = frac + i  # how far behind the head this led is
+        t = 1. + d if d < 0 else 1. - d / tail
+        if t <= 0:
+            continue
+        o = ((h - i) % n) * 4
+        l0[o], l0[o+1], l0[o+2], l0[o+3] = int(c0 * t), int(c1 * t), int(c2 * t), int(c3 * t)
 
-    init(leds0, background)
-
-    for i in range(tail):
-        o = ((frac_led_index - i) % n) * 4
-        t = 1. - float(i) / tail
-        leds0[o] = int(interpolate(0, beam_color[0], t))
-        leds0[o+1] = int(interpolate(0, beam_color[1], t))
-        leds0[o+2] = int(interpolate(0, beam_color[2], t))
-        leds0[o+3] = int(interpolate(0, beam_color[3], t))
-
-    neopixel_write(pin, leds0)
+    neopixel_write(pin, l0)
 
 
 def larson_scanner(primary, secondary):
@@ -563,8 +596,8 @@ def larson_scanner(primary, secondary):
 
     size = 12
 
-    init(leds1, secondary)
-    leds1[larson_index * 4:larson_index * 4 + 4] = bytearray(primary)
+    init(leds0, secondary)
+    leds0[larson_index * 4:larson_index * 4 + 4] = bytearray(primary)
 
     for i in range(size):
         b = larson_index + 1 + i
@@ -572,11 +605,11 @@ def larson_scanner(primary, secondary):
         t = (i+1.) / size
         fading = interpolate_rgbw(secondary, primary, 1-t)
         if larson_bounds[0] <= a and a < larson_bounds[1]:
-            leds1[a * 4:a * 4 + 4] = bytearray(fading)
+            leds0[a * 4:a * 4 + 4] = bytearray(fading)
         if larson_bounds[0] <= b and b < larson_bounds[1]:
-            leds1[b * 4:b * 4 + 4] = bytearray(fading)
+            leds0[b * 4:b * 4 + 4] = bytearray(fading)
 
-    neopixel_write(pin, leds1)
+    neopixel_write(pin, leds0)
 
     larson_last_dir = larson_dir
     larson_index += larson_dir
@@ -602,6 +635,7 @@ def set_color(led_index, color, clear_others=False):
 
 def run_solunar():
     global static, equinox_or_solstice, mode
+    stop_timer()  # the old mode's timer would draw between the fade's frames
     mode = 'solunar'
 
     # calculate once if today is equinox or solstice
@@ -615,6 +649,7 @@ def run_solunar():
 
 def run_cls_clock(continuous=False):
     global static, mode
+    stop_timer()
     mode = 'clock'
 
     clock.update_params({'mode': 'cls', 'continuous': continuous})
@@ -623,12 +658,15 @@ def run_cls_clock(continuous=False):
 
     timing.update_time()
 
+    clock.last_second = -1  # so the first frame draws
+    fade_in(update_clock)
     static = False
     timer.init(period=100, mode=Timer.PERIODIC, callback=lambda t: update_clock())
 
 
 def run_neo_clock(start_at_minute=False, two_colors=False, ambient=False):
-    global static, last_minute, mode
+    global static, mode
+    stop_timer()
     mode = 'clock'
 
     clock.update_params({'mode': 'neo',
@@ -646,23 +684,30 @@ def run_neo_clock(start_at_minute=False, two_colors=False, ambient=False):
     s = utime.localtime()[5]  # seconds
     while True:  # wait for the next full second
         if utime.localtime()[5] != s:
-            last_minute = utime.localtime()[4]  # prevents color update on first neo draw
+            clock.last_minute = utime.localtime()[4]  # prevents color update on first neo draw
             break
         utime.sleep_ms(10)
 
+    fade_in(update_clock)
     static = False
     timer.init(period=100, mode=Timer.PERIODIC, callback=lambda t: update_clock())
 
 
 def run_spin(color, frequency=0.25):
-    global static
+    global static, last_millis, spin_head
+    stop_timer()
 
+    last_millis = utime.ticks_ms()
+    spin_head = -1  # the first frame draws the whole strip
+    fade_in(lambda: spin(color, frequency))
+    last_millis = utime.ticks_ms()  # turn on from the faded-in frame, not a second ahead
     static = False
-    timer.init(period=100, mode=Timer.PERIODIC, callback=lambda t: spin(color, frequency))
+    timer.init(period=SPIN_FRAME_MS, mode=Timer.PERIODIC, callback=lambda t: spin(color, frequency))
 
 
 def run_larson_scanner(cardinal, primary, secondary):
     global static, larson_bounds, larson_index, larson_dir, larson_last_dir
+    stop_timer()
 
     larson_bounds = cardinals[cardinal][2]
     larson_index = larson_bounds[0]
@@ -673,6 +718,7 @@ def run_larson_scanner(cardinal, primary, secondary):
     seconds = 2.
     dt = seconds / n_leds * 1000.
 
+    fade_in(lambda: larson_scanner(primary, secondary))
     static = False
     timer.init(period=int(round(dt)), mode=Timer.PERIODIC, callback=lambda t: larson_scanner(primary, secondary))
 
@@ -680,9 +726,7 @@ def run_larson_scanner(cardinal, primary, secondary):
 def stop_timer():
     global static, mode
     mode = None
-    if not static:
-        leds0[:] = leds1  # copy currently displayed colors to start array for next fade
-        static = True  # back to static mode
+    static = True  # back to static mode; leds0 holds what's shown, the next fade starts there
     timer.deinit()
 
 
@@ -700,6 +744,26 @@ def change_accent(color, received=False):
 
 
 # ##############################################################################
+
+
+# the modes to switch between, by name (see show)
+MODES = {
+    'solunar': run_solunar,        # ()
+    'clock': run_cls_clock,        # (continuous)
+    'neo': run_neo_clock,          # (start_at_minute, two_colors, ambient)
+    'ambient': ambient,            # ()
+    'off': off,                    # ()
+    'sides': set_sides,            # (north, east, south, west, linear)
+    'spin': run_spin,              # (color, frequency)
+    'larson': run_larson_scanner,  # (cardinal, primary, secondary)
+}
+
+
+def show(name, *args):
+    """Switch to a mode by name, e.g. show('clock', True): stops whatever runs, then starts the
+    mode with its fade. The one call the web app needs; the functions above are the parts."""
+    stop_timer()
+    MODES[name](*args)
 
 
 def start():

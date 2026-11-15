@@ -1,8 +1,8 @@
-# Solar Map
+# Astrolab
 
 I have upgraded an almost 50 year old map of Paris to display solar/lunar positions.
 
-[![Solar/Lunar Map](https://www.marclieser.de/data/content/interests/solarmap/solarmap_ytcue.jpg)](http://www.youtube.com/watch?v=3vjASYzq22o "Solar/Lunar Map")
+[![Astrolab](https://www.marclieser.de/data/content/interests/astrolab/astrolab_ytcue.jpg)](http://www.youtube.com/watch?v=3vjASYzq22o "Astrolab")
 
 Since I could not find a (free) web service to query solar and lunar azimuth and elevation, I used equations from [Meeus, Jean. Astronomical Algorithms, 1998](https://shopatsky.com/products/astronomical-algorithms-2nd-edition) and [Astronomy Answers](https://www.aa.quae.nl/en/reken.html) to do the calculations myself.
 The accuracy is very poor and there are probably bugs.
@@ -11,9 +11,9 @@ The lack of double precision of the ESP8266 means that basic astronomical calcul
 For example, the Julian day number (JDN) cannot actually be calculated to the day.
 I have currently hotfixed this specific problem by breaking the equation into integer and floating point parts, but all following equations lack accuracy and in the long run I will just upgrade to an ESP32.
 
-Next to the solar/lunar map I have added modes to display the current time in the style of an analog clock style and some random animations as well as static ambient lighting.
+Next to the astrolab celestial map, the frame can show the time as an analog clock, light the map in a radial glow, in the four sides' own colors or as a gradient from top to bottom, and run two animations (see [Modes](#modes)).
 
-The map can be controlled from your home wifi through a [web interface](http://solar.marclieser.de/) that has its own [repository](https://github.com/marcwingduck/solar_map_web).
+The map can be controlled from your home wifi through a [web interface](http://astrolab.marclieser.de/), [Astrolab Remote](https://github.com/marcwingduck/astrolab-remote).
 
 ## Components
 
@@ -77,32 +77,38 @@ See `accent.py`.
 
 ### Frame Constants
 
-Variables in `frame.py` that need to be adjusted according to your frame.
-
-The number of LEDs
-
-```
-n = 180
-```
-
-The number of horizontal (cols) and vertical LEDs (rows)
+In `frame.py`, adjust to your frame: the number of vertical (rows) and horizontal LEDs (cols), and the LEDs per centimeter.
+The number of LEDs, `n = 2*(cols+rows)`, follows from them.
 
 ```
-cols = 54
-rows = 36
-```
-
-The number of LEDs per centimeter
-
-```
+rows, cols = 36, 54
 leds_per_cm = 0.6
 ```
 
-Latitude and longitude of the location in degrees
+In `paris.py`, the latitude and longitude of the location in degrees:
 
 ```
 coords = (48.860536, 2.332237)
 ```
+
+## Modes
+
+`paris.show(name, ...)` switches to a mode, stopping whatever runs and fading over. The web interface sends nothing else; from the WebREPL it works the same, e.g. `paris.show('clock', True)`. Colors are G, R, B, W tuples.
+
+| Name | Arguments | Shows |
+|---|---|---|
+| `solunar` | | the solar/lunar map: sun and moon where they stand, river and equinox/solstice markers |
+| `clock` | `continuous` | a classic analog clock |
+| `neo` | `start_at_minute, two_colors, ambient` | a clock filling up with the seconds |
+| `radial` | `color[, corner]` | the frame in one color, like a light at its center |
+| `sides` | `north, east, south, west, linear[, corner]` | each side in its own color, evenly or fading toward the corners |
+| `vertical_interp` | `top, bottom` | a gradient from top to bottom |
+| `vertical` | `top, bottom` | the top half in one color, the bottom half in another |
+| `spin` | `color, frequency` | a beam turning around the frame |
+| `larson` | `cardinal, primary, secondary` | a scanner along one side |
+| `off` | | dark |
+
+`paris.apply_dimmer(0..1)` sets the brightness of every mode. The test functions behind the web interface's Tests section live in `tests.py`, loaded only when used.
 
 ## MicroPython Firmware
 

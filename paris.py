@@ -23,9 +23,8 @@ color_river = bytearray([int(0.06 * x) for x in colors.colors['river_blue']])
 # Each mode shows it in a role it already has:
 #   highlights (equinox, solstice markers, the classic clock's second hand), bright
 #   the neo clock's sweep, as dim as the river
-#   the solar map's glow over the edge facing the pole (north, or south on the southern
-#   hemisphere), where the sun goes least, like the start animation's; only while an accent is received
-#   (GLOW = 0 turns it off)
+#   the solar map's glow, a third light next to sun and moon, in the middle of the largest arc
+#   free of both; only while an accent is received (GLOW = 0 turns it off)
 accent_default = colors.colors['river_blue']
 color_accent = bytearray(4)
 color_sweep = bytearray(4)
@@ -145,19 +144,33 @@ def ambient():
     fade()
 
 
-def paris(leds, glow=False):
+def paris(leds, glow_azimuth=None):
     init(leds, color_ambient)
-    if glow:
-        draw_glow(color_glow, leds)
+    if glow_azimuth is not None:
+        draw_glow(color_glow, glow_azimuth, leds)
     set_area2(1/leds_per_cm, 6, color_river, leds)
     set_area2(65/leds_per_cm, 10, color_river, leds)
     set_area2(143/leds_per_cm, 5, color_river, leds)
 
 
-def draw_glow(color, leds):
-    """Blend color in over the edge facing the pole."""
-    side = 'north' if coords[0] >= 0 else 'south'
-    set_area2(cardinals[side][0]/leds_per_cm, width/3, color, leds)
+def draw_glow(color, azimuth, leds):
+    """Blend color in around azimuth (radians, clockwise from north)."""
+    result = unwind_angle(northclockwise2math(azimuth))
+    if result:
+        set_area2(result[0], width / 3, color, leds)
+
+
+def glow_azimuth(positions):
+    """The middle of the largest arc free of the bodies that are up, from (azimuth, elevation)
+    pairs: opposite a lone one, between two on their far side, and facing the pole (where the
+    sun goes least) when none is up."""
+    up = sorted(azim % (2. * math.pi) for azim, elev in positions if elev > 0.)
+    if not up:
+        return 0. if coords[0] >= 0 else math.pi
+    if len(up) == 1:
+        return up[0] + math.pi
+    middle = (up[0] + up[1]) / 2.
+    return middle if up[1] - up[0] > math.pi else middle + math.pi
 
 
 def set_circular_background(color):
@@ -360,9 +373,15 @@ def cycle_circular(size=1):
 # ##############################################################################
 
 
-def draw_solunar_positions(lat_long_deg, utc_time, leds):
+def solunar_positions(lat_long_deg, utc_time):
+    """(azimuth, elevation) of the moon and the sun, radians."""
+    return (solunar.calc_lunar_position(lat_long_deg, utc_time),
+            solunar.calc_solar_position(lat_long_deg, utc_time))
+
+
+def draw_solunar_positions(lat_long_deg, utc_time, leds, positions=None):
+    (lunar_azim, lunar_elev), (solar_azim, solar_elev) = positions or solunar_positions(lat_long_deg, utc_time)
     # moon
-    lunar_azim, lunar_elev = solunar.calc_lunar_position(lat_long_deg, utc_time)
     lunar_result = unwind_angle(northclockwise2math(lunar_azim))
     if lunar_result and lunar_elev > 0.:
         distance = lunar_result[0]
@@ -372,7 +391,6 @@ def draw_solunar_positions(lat_long_deg, utc_time, leds):
         set_area2(distance, 1 + f2 * 10, (0, 0, 0, 5), leds)
         set_area2(distance, 1 + f2 * 5, color, leds)
     # sun
-    solar_azim, solar_elev = solunar.calc_solar_position(lat_long_deg, utc_time)
     solar_result = unwind_angle(northclockwise2math(solar_azim))
     if solar_result and solar_elev > 0.:
         distance = solar_result[0]
@@ -384,11 +402,13 @@ def draw_solunar_positions(lat_long_deg, utc_time, leds):
 
 
 def paris_solunar():
-    paris(leds1, accent_received and GLOW > 0)
+    now = utime.localtime()
+    positions = solunar_positions(coords, now)
+    paris(leds1, glow_azimuth(positions) if accent_received and GLOW > 0 else None)
     for i in range(equinox_or_solstice + 1):
         cardinal = list(cardinals.values())[i]
         set_area2(cardinal[0]/leds_per_cm, 5, color_accent, leds1)
-    draw_solunar_positions(coords, utime.localtime(), leds1)
+    draw_solunar_positions(coords, now, leds1, positions)
     fade()
 
 

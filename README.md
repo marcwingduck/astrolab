@@ -63,9 +63,9 @@ WIFI_PASSWORD=mypassword
 The map has one accent color, river blue by default. Each mode shows it in a role it already has:
 the highlights (equinox and solstice markers, the classic clock's second hand) and the neo clock's sweep.
 With `ACCENT_PORT=4211` in `.env`, the map also takes that color from another device on the network.
-While a received color is active, the solar map also glows in it over the edge facing the pole (north, or south
-on the southern hemisphere, where the sun goes least), brightest in the middle like the last stage of the start
-animation (`GLOW` in `paris.py`):
+While a received color is active, the solar map also shows it as a third light next to sun and moon, twice the
+size of the sun, in the middle of the largest arc free of both: opposite the one that is up, between the two on
+their far side, or facing the pole when neither is (`GLOW` in `paris.py`):
 
 ```
 echo -n "accent ff8800" | nc -u -w0 <map ip> 4211   # any RGB hex, drawn at the map's brightness

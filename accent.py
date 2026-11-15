@@ -3,7 +3,7 @@ Accent color over UDP (optional, enabled by ACCENT_PORT in .env).
 
 Lets another device on the network set the map's accent color:
 each mode shows the received color in a role it already has (see paris.py: the
-highlights, the neo clock's sweep, a glow on the solar map's pole-facing edge); the default
+highlights, the neo clock's sweep, a third light on the solar map, opposite sun and moon); the default
 comes back when the sender says so or goes quiet.
 
 Datagrams are plain text:

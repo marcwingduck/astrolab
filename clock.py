@@ -15,8 +15,8 @@ class Clock:
         self.color_s = [38, 215, 56, 0]
 
         # neo clock
-        self.color_1 = colors.colors['cyan'][:]
-        self.color_2 = colors.colors['orange'][:]
+        self.color_1 = list(colors.random_saturated())
+        self.color_2 = list(colors.random_saturated_2(self.color_1))
         self.color_old_hands = self.color_2[:]
         self.color_new_hands = self.color_1[:]
 
@@ -124,7 +124,6 @@ class Clock:
         m_dist = unwind_angle(northclockwise2math(a_m))[0]
         s_dist = unwind_angle(northclockwise2math(a_s))[0]
 
-        # leds[:] = bytearray(n * list(colors.color_ambient)) # <-- extra right-hand side allocation fails due to memory issues
         background = self.dim_1
         for i in range(n):
             leds[i*4:i*4+4] = background

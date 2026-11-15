@@ -93,34 +93,42 @@ def unwind_angle(angle):
     return None
 
 
-def get_distance_intensity(i):
-    side = ''
-    x = 0
-    y = 0
-    for e in cardinals:
-        side_range = cardinals[e][2]
-        if side_range[0] <= i and i < side_range[1]:
-            side = e
-            break
-    if side == 'south':
-        j = float(cols-i)
-        x = j/cols * width - width/2.
-        y = -height/2.
-    if side == 'west':
-        j = float(i-cols)
-        x = -width/2.
-        y = j/rows * height - height/2.
-    if side == 'north':
-        j = float(i-cols-rows)
-        x = j/cols * width - width/2.
-        y = height/2.
-    if side == 'east':
-        j = float(rows-(i-cols-rows-cols))
-        x = width/2.
-        y = j/cols * height - height/2.
-    norm = math.sqrt(x*x+y*y)
-    intensity = (height/2.) / norm
-    return intensity
+def led_xy(i):
+    """Where the middle of led i sits on the frame, in cm from the frame's center (x east, y
+    north): the inverse of unwind_angle's way along the strip."""
+    d = (i % n + 0.5) / leds_per_cm  # cm along the strip, from the south east corner
+    w2, h2 = width / 2., height / 2.
+    if d < width:  # south, east to west
+        return w2 - d, -h2
+    d -= width
+    if d < height:  # west, south to north
+        return -w2, d - h2
+    d -= height
+    if d < width:  # north, west to east
+        return d - w2, h2
+    return w2, h2 - (d - width)  # east, north to south
+
+
+def distance_intensity(x, y):
+    """How bright a light at the frame's center is where it meets the frame at (x, y): 1 where
+    the edge is nearest, dimming as 1/distance (the spin's beam)."""
+    return min(width, height) / 2. / math.sqrt(x*x + y*y)
+
+
+# how far the frame's edge is from its center: nearest in the middle of the long sides, farthest
+# in the corners
+R_NEAR = min(width, height) / 2.
+R_FAR = math.sqrt(width * width + height * height) / 2.
+
+
+def radial_intensity(x, y, corner, near=R_NEAR):
+    """Led brightness 0..1 for a glow from the frame's center that falls off evenly *as seen*:
+    1 at distance near (by default where the edge is nearest), corner (perceived, 0..1) in the
+    corners. Physics alone gives too little: the corners are only 1.8 times as far, and eyes see
+    brightness logarithmically. With near the distance of one side's middle, that side peaks there."""
+    t = (math.sqrt(x*x + y*y) - near) / (R_FAR - near)
+    t = min(1., max(0., t))
+    return (corner + (1. - corner) * (1. - t)) ** 2.2  # perceived -> led value (gamma)
 
 
 def sine(c, w, x):

@@ -1,4 +1,5 @@
 from machine import Pin, Timer, bitstream
+import gc
 import utime
 import math
 
@@ -17,7 +18,7 @@ coords = (48.860536, 2.332237)  # paris
 # some colors matching the frame
 color_off = bytearray(4)
 color_ambient = bytearray((1, 0, 1, 8))
-color_river = bytearray([int(0.06 * x) for x in colors.colors['river_blue']])
+color_river = bytearray([int(0.06 * x) for x in colors.RIVER_BLUE])
 
 # The accent color, river blue unless one is received (see accent.py).
 # Each mode shows it in a role it already has:
@@ -25,7 +26,7 @@ color_river = bytearray([int(0.06 * x) for x in colors.colors['river_blue']])
 #   the neo clock's sweep, as dim as the river
 #   the solar map's glow, a third light next to sun and moon, in the middle of the largest arc
 #   free of both; only while an accent is received (GLOW = 0 turns it off)
-accent_default = colors.colors['river_blue']
+accent_default = colors.RIVER_BLUE
 color_accent = bytearray(4)
 color_sweep = bytearray(4)
 color_glow = bytearray(4)
@@ -61,7 +62,7 @@ timer = Timer(-1)
 static = True
 
 # the running mode that shows the accent, so a new accent can redraw it:
-# 'solunar', 'clock', 'ambient', or None for everything else
+# 'solunar', 'clock', or None for everything else
 mode = None
 
 # check if second changed to start counting millis
@@ -188,7 +189,7 @@ def apply_dimmer(value):
     dimmer = clamp(value, 0., 1.)
 
     # leds1 holds what static modes and the solar map show: fade it to the new brightness now
-    # (the clocks pick it up with their next frame; spin and larson don't use it)
+    # (the clocks, spin and larson pick it up with their next frame)
     if static or mode == 'solunar':
         fade()
 
@@ -210,11 +211,6 @@ def init(leds, color):
 
 def off():
     clear(leds1)
-    fade()
-
-
-def ambient():
-    paris(leds1)
     fade()
 
 
@@ -247,93 +243,62 @@ def glow_azimuth(positions):
     return middle if up[1] - up[0] > math.pi else middle + math.pi
 
 
-def set_circular_background(color):
+RADIAL_CORNER = 0.2  # how bright the corners look, 0..1: 0.1 a strong circle, 0.3 a soft one
+
+
+def set_circular_background(color, corner=RADIAL_CORNER):
+    """The whole frame in one color, like a light at its center: brightest where the edge is
+    nearest, fading evenly as seen toward the corners."""
     for i in range(n):
-        intensity = get_distance_intensity(i)
-        icolor = [int(intensity * c) for c in color]
-        leds1[i * 4:i * 4 + 4] = bytearray(icolor)
+        x, y = led_xy(i)
+        k = radial_intensity(x, y, corner)
+        o = i * 4
+        leds1[o], leds1[o+1], leds1[o+2], leds1[o+3] = int(k * color[0]), int(k * color[1]), int(k * color[2]), int(k * color[3])
     fade()
 
 
-def set_area(center, size, primary, secondary, leds):
-    if size == 1:
-        leds[center * 4:center * 4 + 4] = bytearray(primary)
-        return
-
-    half = int(size / 2)
-    start = center - half
-    end = center + half + size % 2
-    d = 0. if size % 2 else 0.5
-    for i in range(start, end):
-        x = center - i - d
-        t = math.fabs((x - sign(x) * d) / (half - (size + 1) % 2))
-        color = interpolate_rgbw(primary, secondary, t)
-        index = i % n
-        leds[index * 4:index * 4 + 4] = bytearray(color)
-
-
-def set_sides(north, east, south, west, linear=False):
-
-    clear(leds1)
-
-    if linear:
-        for i in range(*cardinals['north'][2]):
-            o = i * 4
-            leds1[o] = north[0]
-            leds1[o+1] = north[1]
-            leds1[o+2] = north[2]
-            leds1[o+3] = north[3]
-        for i in range(*cardinals['east'][2]):
-            o = i * 4
-            leds1[o] = east[0]
-            leds1[o+1] = east[1]
-            leds1[o+2] = east[2]
-            leds1[o+3] = east[3]
-        for i in range(*cardinals['south'][2]):
-            o = i * 4
-            leds1[o] = south[0]
-            leds1[o+1] = south[1]
-            leds1[o+2] = south[2]
-            leds1[o+3] = south[3]
-        for i in range(*cardinals['west'][2]):
-            o = i * 4
-            leds1[o] = west[0]
-            leds1[o+1] = west[1]
-            leds1[o+2] = west[2]
-            leds1[o+3] = west[3]
-    else:
-        set_area2(cardinals['north'][0] / leds_per_cm, width, north, leds1)
-        set_area2(cardinals['east'][0] / leds_per_cm, height, east, leds1)
-        set_area2(cardinals['south'][0] / leds_per_cm, width, south, leds1)
-        set_area2(cardinals['west'][0] / leds_per_cm, height, west, leds1)
+def set_sides(north, east, south, west, linear=False, corner=RADIAL_CORNER):
+    """Each side in its own color: evenly (linear), or brightest in its middle and fading evenly
+    as seen toward the corners, to corner (as in set_circular_background), every side alike."""
+    w2, h2 = width / 2., height / 2.
+    for i in range(n):
+        if i < south_west:
+            color, near = south, h2
+        elif i < north_west:
+            color, near = west, w2
+        elif i < north_east:
+            color, near = north, h2
+        else:
+            color, near = east, w2
+        if linear:
+            k = 1.
+        else:
+            x, y = led_xy(i)
+            k = radial_intensity(x, y, corner, near)
+        o = i * 4
+        leds1[o], leds1[o+1], leds1[o+2], leds1[o+3] = int(k * color[0]), int(k * color[1]), int(k * color[2]), int(k * color[3])
 
     fade()
-
-# ##############################################################################
-
 
 def set_vertical(c1, c2):
-    set_area(cols//2 + n//2, n//2, c1, c1, leds1)
-    set_area(cols//2, n//2, c2, c2, leds1)
-    fade()
-
-
-def set_horizontal(c1, c2):
-    set_area(cols+rows//2, n//2, c1, c1, leds1)
-    set_area(cols+rows+cols+rows//2, n//2, c2, c2, leds1)
+    """The frame in two halves: the top (north and the upper half of the sides) in c1, the
+    bottom in c2."""
+    for i in range(n):
+        x, y = led_xy(i)
+        c = c1 if y > 0 else c2
+        o = i * 4
+        leds1[o], leds1[o+1], leds1[o+2], leds1[o+3] = c[0], c[1], c[2], c[3]
     fade()
 
 
 def set_vertical_interp(c1, c2):
-    set_area(cardinals['north'][0], cardinals['north'][1], c1, c1, leds1)
-    set_area(cardinals['south'][0], cardinals['south'][1], c2, c2, leds1)
-    for i in range(rows):
-        color_linear = interpolate_rgbw(c1, c2, (i + 1.) / rows)
-        color = bytearray(color_linear)
-        i_east = north_east + i
-        i_west = north_west - i - 1
-        leds1[i_east * 4:i_east * 4 + 4] = color
-        leds1[i_west * 4:i_west * 4 + 4] = color
+    """North in c1, south in c2, the sides a gradient between them, by height."""
+    for i in range(n):
+        x, y = led_xy(i)
+        t = (y + height / 2.) / height  # 0 at the bottom, 1 at the top
+        o = i * 4
+        for k in range(4):
+            leds1[o + k] = int(c2[k] + (c1[k] - c2[k]) * t)
     fade()
 
 
@@ -393,74 +358,6 @@ def ramp_up():
 # ##############################################################################
 
 
-def test_led(led_id, brightness=255, n_times=3, timeout_ms=500):
-    for _ in range(n_times):
-        for i in range(4):
-            clear(leds0)
-            index = (led_id*4) + i
-            leds0[index] = brightness
-            neopixel_write(pin, leds0)
-            utime.sleep_ms(timeout_ms)
-        clear(leds0)
-        neopixel_write(pin, leds0)
-        utime.sleep_ms(timeout_ms)
-    off()
-
-
-def cycle_channels(brightness=255, n_cycles=1, timeout_ms=100):
-    for i in range(n * 4 * n_cycles):
-        clear(leds0)
-        index = i % (n * 4)
-        leds0[index] = brightness
-        neopixel_write(pin, leds0)
-        utime.sleep_ms(timeout_ms)
-    off()
-
-
-def cycle_color(color, n_cycles=1, timeout_ms=100):
-    for i in range(n * n_cycles):
-        clear(leds0)
-        index = (i % n) * 4
-        leds0[index:index + 4] = bytearray(color)
-        neopixel_write(pin, leds0)
-        utime.sleep_ms(timeout_ms)
-    off()
-
-
-def cycle_circular(size=1):
-    n_samples = 360
-    color_1 = [0, 0, 0, 0]  # background color
-    color_2 = [0, 164, 0, 0]  # pointer color
-    for i in range(n_samples):
-        angle = 2/3.*math.pi + i/n_samples * 3/4.*math.pi
-        # angle = 2/3.*math.pi + i/n_samples * 2*math.pi
-        cm_on_strip, (x, y) = unwind_angle(northclockwise2math(angle))
-        fraction_led = cm_on_strip * leds_per_cm
-        frac, frac_led_index = math.modf(fraction_led)
-        frac_led_index = int(frac_led_index)
-        init(leds0, color_1)
-        id0 = frac_led_index * 4
-        id1 = ((frac_led_index+1) % n) * 4
-
-        # 1 smooth
-        # leds0[id0:id0+4] = bytearray((0, 0, 0, int((1-frac)*64)))
-        # leds0[id1:id1+4] = bytearray((0, 0, 0, int(frac*64)))
-
-        # 2 blending in: not so super smooth, but ok
-        # leds0[id0:id0+4] = bytearray(interpolate_rgbw(color_2, color_1, frac))
-        # leds0[id1:id1+4] = bytearray(interpolate_rgbw(color_1, color_2, frac))
-
-        # 3
-        set_area2(cm_on_strip, size, color_2, leds0)
-
-        neopixel_write(pin, leds0)
-        utime.sleep_ms(1)
-    off()
-
-
-# ##############################################################################
-
-
 def solunar_positions(lat_long_deg, utc_time):
     """(azimuth, elevation) of the moon and the sun, radians."""
     return (solunar.calc_lunar_position(lat_long_deg, utc_time),
@@ -500,34 +397,6 @@ def paris_solunar():
     fade()
 
 
-def solunar_demo():
-    paris(leds1)
-    fade()
-    year, month, day, hour, minute, second, weekday, yearday = utime.localtime()
-
-    for h in range(24):
-        for m in range(0, 60):
-            # clear
-            paris(leds0)
-
-            # hour
-            angle = (h % 12 + m / 60.) / 12. * 2. * math.pi
-            distance = unwind_angle(northclockwise2math(angle))[0]
-            set_area2(distance, 4, [158, 81, 188, 0], leds0)
-
-            # solar/lunar
-            draw_solunar_positions(coords, (year, month, day, h, m, 0, weekday, yearday), leds0)
-
-            # apply
-            neopixel_write(pin, leds0)
-
-    paris(leds1)
-    fade()
-
-
-# ##############################################################################
-
-
 def update_clock():
     global start_second, last_second
     h, m, s = utime.localtime()[3:6]
@@ -539,18 +408,6 @@ def update_clock():
 
     if clock.update(h, m, s, ms, leds0, int(dimmer * 256)):
         neopixel_write(pin, leds0)
-
-
-def clock_demo():
-    for h in range(24):
-        for m in range(0, 60):
-            for s in range(0, 60):
-                for ms in range(0, 1000, 250):
-                    clock.update(h, m, s, ms, leds0)
-                    neopixel_write(pin, leds0)
-
-
-# ##############################################################################
 
 
 def spin(color, frequency):
@@ -565,7 +422,7 @@ def spin(color, frequency):
     angle = wrap_to_0_2pi(last_angle + dt * frequency * 2. * math.pi)
     last_angle = angle
     cm_on_strip, (x, y) = unwind_angle(northclockwise2math(angle))
-    intensity = (min(height, width) / 2.) / math.sqrt(x*x+y*y)  # dimmer where the edge is far
+    intensity = distance_intensity(x, y)  # dimmer where the edge is far, as the circular background
     head = cm_on_strip * leds_per_cm  # where the beam's head is, in leds, between two of them
     h = int(head)
     frac = head - h
@@ -579,7 +436,8 @@ def spin(color, frequency):
             l0[o] = l0[o+1] = l0[o+2] = l0[o+3] = 0
     spin_head = h
 
-    c0, c1, c2, c3 = intensity * color[0], intensity * color[1], intensity * color[2], intensity * color[3]
+    k = intensity * int(dimmer * 256) / 256.  # the dimmer as fade() applies it
+    c0, c1, c2, c3 = k * color[0], k * color[1], k * color[2], k * color[3]
     for i in range(-1, tail + 1):  # the led ahead of the head, the head, the tail
         d = frac + i  # how far behind the head this led is
         t = 1. + d if d < 0 else 1. - d / tail
@@ -595,6 +453,9 @@ def larson_scanner(primary, secondary):
     global larson_index, larson_dir, larson_last_dir
 
     size = 12
+    dim = int(dimmer * 256)  # its two colors at the dimmer's brightness, as fade() applies it
+    primary = [(c * dim) >> 8 for c in primary]
+    secondary = [(c * dim) >> 8 for c in secondary]
 
     init(leds0, secondary)
     leds0[larson_index * 4:larson_index * 4 + 4] = bytearray(primary)
@@ -617,17 +478,6 @@ def larson_scanner(primary, secondary):
         larson_dir = -1
     elif larson_dir == -1 and larson_index == larson_bounds[0]:
         larson_dir = 1
-
-
-# ##############################################################################
-
-
-def set_color(led_index, color, clear_others=False):
-    led_index = clamp(led_index, 0, n-1)
-    if clear_others:
-        clear(leds0)
-    leds0[led_index*4:led_index*4+4] = bytearray(color)
-    neopixel_write(pin, leds0)
 
 
 # ##############################################################################
@@ -678,7 +528,8 @@ def run_neo_clock(start_at_minute=False, two_colors=False, ambient=False):
         clock.set_background_colors(color_ambient, color_sweep)
         clock.set_hand_colors([26, 26, 0, 127], [60, 0, 40, 0], color_accent)
     else:
-        clock.set_background_colors(colors.colors['cyan'], colors.colors['orange'])
+        first = colors.random_saturated()  # a random pair to start with
+        clock.set_background_colors(first, colors.random_saturated_2(first))
 
     timing.update_time()
     s = utime.localtime()[5]  # seconds
@@ -751,9 +602,11 @@ MODES = {
     'solunar': run_solunar,        # ()
     'clock': run_cls_clock,        # (continuous)
     'neo': run_neo_clock,          # (start_at_minute, two_colors, ambient)
-    'ambient': ambient,            # ()
     'off': off,                    # ()
-    'sides': set_sides,            # (north, east, south, west, linear)
+    'sides': set_sides,            # (north, east, south, west, linear, corner)
+    'radial': set_circular_background,  # (color, corner)
+    'vertical': set_vertical,      # (top, bottom)
+    'vertical_interp': set_vertical_interp,  # (top, bottom)
     'spin': run_spin,              # (color, frequency)
     'larson': run_larson_scanner,  # (cardinal, primary, secondary)
 }
@@ -763,6 +616,7 @@ def show(name, *args):
     """Switch to a mode by name, e.g. show('clock', True): stops whatever runs, then starts the
     mode with its fade. The one call the web app needs; the functions above are the parts."""
     stop_timer()
+    gc.collect()  # what the webrepl left behind, before the mode allocates
     MODES[name](*args)
 
 

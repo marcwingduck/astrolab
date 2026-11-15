@@ -4,37 +4,46 @@ import random
 h, m, s = utime.localtime()[3:6]
 random.seed(int(str(h) + str(m) + str(s)))
 
-color_ambient = [1, 0, 1, 8]
+# Colors as the strip takes them: 4 bytes each, G, R, B, W. Names only as comments, to keep them
+# out of the board's RAM; color(TABLE, i) picks one.
 
-saturated_rgb = {
-    'red': 'ff0000',
-    'orange': 'ff8800',
-    'yellow': 'ffff00',
-    'grass': '88ff00',
-    'green': '00ff00',
-    'mermaid': '00ff88',
-    'cyan': '00ffff',
-    'sky': '0088ff',
-    'blue': '0000ff',
-    'purple': '8800ff',
-    'magenta': 'ff00ff',
-    'rose': 'ff0088'
-}
+# full colors, for the neo clock's random mode
+SATURATED = bytes((
+      0, 255,   0, 0,  # red                ff0000
+    136, 255,   0, 0,  # orange             ff8800
+    255, 255,   0, 0,  # yellow             ffff00
+    255, 136,   0, 0,  # grass              88ff00
+    255,   0,   0, 0,  # green              00ff00
+    255,   0, 136, 0,  # mermaid            00ff88
+    255,   0, 255, 0,  # cyan               00ffff
+    136,   0, 255, 0,  # sky                0088ff
+      0,   0, 255, 0,  # blue               0000ff
+      0, 136, 255, 0,  # purple             8800ff
+      0, 255, 255, 0,  # magenta            ff00ff
+      0, 255, 136, 0,  # rose               ff0088
+))
 
-accents_rgb = {
-    'river_blue': '00aaff',  # colors that go well with this below
-    'giants_orange': 'ff8811',
-    'fuchsia': 'f100fe',
-    'coral_pink': 'fe938c',
-    'coral': 'ff5619',
-    'yellow': 'ffcc919',
-    'bright_pink': 'F7567C',
-    'plum': '9c528b',
-    'plum_web': 'ec91d8',
-    'rose_bonbon': 'ff499e',
-    'dark_pastel_green': '4cb944',
-    'crimson': 'd72638'
-}
+# accents that go well with the frame
+ACCENTS = bytes((
+    170,   0, 255, 0,  # river_blue         00aaff
+    136, 255,  17, 0,  # giants_orange      ff8811
+      0, 241, 254, 0,  # fuchsia            f100fe
+    147, 254, 140, 0,  # coral_pink         fe938c
+     86, 255,  25, 0,  # coral              ff5619
+    204, 255, 145, 0,  # yellow             ffcc91
+     86, 247, 124, 0,  # bright_pink        f7567c
+     82, 156, 139, 0,  # plum               9c528b
+    145, 236, 216, 0,  # plum_web           ec91d8
+     73, 255, 158, 0,  # rose_bonbon        ff499e
+    185,  76,  68, 0,  # dark_pastel_green  4cb944
+     38, 215,  56, 0,  # crimson            d72638
+))
+
+RIVER_BLUE = ACCENTS[0:4]
+
+
+def color(table, i):
+    return table[i * 4:i * 4 + 4]
 
 
 def hex2grb0(h):
@@ -42,15 +51,6 @@ def hex2grb0(h):
     x = [int(h[i:i+2], 16) for i in (2, 0, 4)]
     x.append(0)
     return x
-
-
-# create color map
-colors = {}
-for key in saturated_rgb.keys():
-    colors[key] = hex2grb0(saturated_rgb[key])
-for key in accents_rgb.keys():
-    colors[key] = hex2grb0(accents_rgb[key])
-
 
 # as bytes: a quarter of the memory of a list
 gamma = bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -71,29 +71,8 @@ gamma = bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
          215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255])
 
 
-def complement(rgbw, keep_w=True):
-    c = [255 - x for x in rgbw]
-    if keep_w:
-        c[3] = rgbw[3]
-    return c
-
-
-def random_color(collection):
-    """
-    Get a random color from either saturated or accents collection.
-    Returns:
-    list with four integers
-    """
-    x = int(random.getrandbits(5) / (2 ** 5 - 1) * (len(collection) - 1))
-    return colors[list(collection.keys())[x]]
-
-
 def random_saturated():
-    return random_color(saturated_rgb)
-
-
-def random_accent():
-    return random_color(accents_rgb)
+    return color(SATURATED, random.getrandbits(8) % (len(SATURATED) // 4))
 
 
 def random_saturated_2(color_1):

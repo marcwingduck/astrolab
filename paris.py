@@ -84,7 +84,7 @@ larson_last_dir = -1
 
 clock = clk.Clock()
 clock.set_background_colors(color_ambient, color_river)
-clock.set_hand_colors([26, 26, 0, 127], [60, 0, 40, 0], color_accent)
+clock.set_hour_color(color_accent)
 
 
 # ##############################################################################
@@ -504,7 +504,7 @@ def run_cls_clock(continuous=False):
 
     clock.update_params({'mode': 'cls', 'continuous': continuous})
     clock.set_background_colors(color_ambient, color_river)
-    clock.set_hand_colors([26, 26, 0, 127], [60, 0, 40, 0], color_accent)
+    clock.set_hour_color(color_accent)
 
     timing.update_time()
 
@@ -526,7 +526,7 @@ def run_neo_clock(start_at_minute=False, two_colors=False, ambient=False):
 
     if ambient:
         clock.set_background_colors(color_ambient, color_sweep)
-        clock.set_hand_colors([26, 26, 0, 127], [60, 0, 40, 0], color_accent)
+        clock.set_hour_color(color_accent)
     else:
         first = colors.random_saturated()  # a random pair to start with
         clock.set_background_colors(first, colors.random_saturated_2(first))

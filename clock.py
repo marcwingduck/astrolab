@@ -4,15 +4,25 @@ from common import *
 from frame import *
 
 
+HOUR_WIDTH = 10   # cm; clearly wider than the minute, as the accent may be nearly white
+MINUTE_WIDTH = 5
+SECOND_WIDTH = 1  # set_area2 makes it two leds at least
+
+# The classic clock's hands: the hour, read first, takes the map's accent (see set_hour_color);
+# the minute is neutral white, the second barely there, as it moves all the time and would distract.
+MINUTE_COLOR = (0, 0, 0, 80)
+SECOND_COLOR = (0, 0, 0, 30)
+
+
 class Clock:
     def __init__(self):
         self.last_minute = -1
         self.last_second = -1
 
         # cls clock
-        self.color_h = [26, 26, 0, 127]
-        self.color_m = [60, 0, 40, 0]
-        self.color_s = [38, 215, 56, 0]
+        self.color_h = [0, 255, 0, 0]  # red until paris.py sets the accent (set_hour_color)
+        self.color_m = list(MINUTE_COLOR)
+        self.color_s = list(SECOND_COLOR)
 
         # neo clock
         self.color_1 = list(colors.random_saturated())
@@ -41,10 +51,8 @@ class Clock:
         self.color_old_hands[:] = self.color_2
         self.color_new_hands[:] = self.color_1
 
-    def set_hand_colors(self, c1, c2, c3):
-        self.color_h = list(c1)
-        self.color_m = list(c2)
-        self.color_s = list(c3)
+    def set_hour_color(self, c):
+        self.color_h = list(c)
 
     def replace_color(self, old, new):
         """Swap one color for another wherever the clock uses it, keeping the neo clock's
@@ -128,9 +136,10 @@ class Clock:
         for i in range(n):
             leds[i*4:i*4+4] = background
 
-        set_area2(m_dist, 6, self.dim_m, leds)
-        set_area2(h_dist, 8, self.dim_h, leds)
-        set_area2(s_dist, 1, self.dim_s, leds)
+        # the second first: the hands cover it where they meet instead of it flashing over them
+        set_area2(s_dist, SECOND_WIDTH, self.dim_s, leds)
+        set_area2(m_dist, MINUTE_WIDTH, self.dim_m, leds)
+        set_area2(h_dist, HOUR_WIDTH, self.dim_h, leds)
 
         # smooth two-led second hand
         # fraction_led = s_dist * leds_per_cm
